@@ -77,7 +77,7 @@ class LetterpressHalftone(Gimp.PlugIn):
         proc.add_double_argument("dpi", "_Output resolution (DPI)", "Plate/film resolution in pixels per inch",
                                  72.0, 5080.0, 1200.0, rw)
         proc.add_double_argument("input-ppi", "_Input resolution (PPI)",
-                                 "Resolution of the source image; 0 uses the image's print size", 0.0, 9600.0, 0.0, rw)
+                                 "Resolution of the source image; filled in from Image > Print Size, 0 also uses it", 0.0, 9600.0, 0.0, rw)
         proc.add_double_argument("angle", "Screen _angle", "Screen angle in degrees", -90.0, 90.0, 45.0, rw)
 
         shapes = Gimp.Choice.new()
@@ -104,6 +104,9 @@ class LetterpressHalftone(Gimp.PlugIn):
 
         if run_mode == Gimp.RunMode.INTERACTIVE:
             GimpUi.init(PROC_NAME)
+            # Start from this image's resolution rather than the value
+            # remembered from the last image.
+            config.set_property("input-ppi", _image_ppi(image))
             dialog = GimpUi.ProcedureDialog.new(procedure, config, "Letterpress Halftone")
             dialog.fill(None)
             if not dialog.run():

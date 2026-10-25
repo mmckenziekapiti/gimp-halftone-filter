@@ -32,7 +32,7 @@ tone value you ask for, and keeps dots inside the range a plate can hold.
 | --- | --- | --- |
 | Screen frequency (LPI) | 85 | 65 to 100 LPI suits etched magnesium; zinc and copper can hold a little finer. Coarser holds up better on soft paper. |
 | Output resolution (DPI) | 1200 | Match your imagesetter, film printer or platesetter. Keep DPI at least 10 times LPI: a cell gives about (DPI / LPI)² grey levels. |
-| Input resolution (PPI) | 0 | 0 uses the image's print size. Set it to override. |
+| Input resolution (PPI) | from image | Filled in from the image's print resolution each time the dialog opens. Change it to override. |
 | Screen angle | 45° | 45° hides the pattern best for a single colour. |
 | Dot shape | Round | Round, Euclidean, Elliptical/chain, Square, Diamond, Line. Euclidean and Elliptical give smoother midtones. |
 | Dot gain at 50% (%) | 10 | Net change at a 50% dot from etching plus printing. Etching sharpens (shrinks) dots and printing spreads them, so measure from a printed test strip. Negative values grow the plate dots instead. |
