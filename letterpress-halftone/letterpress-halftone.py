@@ -147,7 +147,7 @@ class LetterpressHalftone(Gimp.PlugIn):
                                  50.0, 100.0, 90.0, rw)
         proc.add_boolean_argument("hold-extremes", "_Hold min/max dots",
                                   "Hold the minimum and maximum dot instead of dropping to paper or solid",
-                                  False, rw)
+                                  True, rw)
         proc.add_boolean_argument("negative", "_Negative (for film)", "Invert the output", False, rw)
         proc.add_boolean_argument("mirror", "Mi_rror (wrong-reading)", "Flip the output horizontally", False, rw)
         return proc

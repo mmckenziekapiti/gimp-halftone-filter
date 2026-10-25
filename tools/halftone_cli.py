@@ -31,7 +31,8 @@ def main(argv=None):
     p.add_argument("--dot-gain", type=float, default=10.0, help="net gain at 50%%, in percent; negative for dot loss (default 10)")
     p.add_argument("--min-dot", type=float, default=5.0, help="smallest printable dot, percent (default 5)")
     p.add_argument("--max-dot", type=float, default=90.0, help="largest dot that keeps a hole, percent (default 90)")
-    p.add_argument("--hold-extremes", action="store_true", help="hold min/max dots instead of dropping to paper/solid")
+    p.add_argument("--hold-extremes", action=argparse.BooleanOptionalAction, default=True,
+                   help="hold min/max dots instead of dropping to paper/solid (default on)")
     p.add_argument("--negative", action="store_true", help="invert for film negatives")
     p.add_argument("--mirror", action="store_true", help="flip horizontally (wrong-reading)")
     a = p.parse_args(argv)
