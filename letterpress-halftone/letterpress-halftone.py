@@ -51,8 +51,8 @@ def _image_ppi(image):
 def _to_bitmap(image):
     """Convert to a black/white indexed image. Returns None, or the errors seen.
 
-    Tries a few routes because the palette argument's binding differs
-    between GIMP 3 releases.
+    Tries a few routes because the palette argument differs between GIMP 3
+    releases: 3.0.x takes a palette name string, later releases an object.
     """
     errors = []
 
@@ -60,9 +60,9 @@ def _to_bitmap(image):
         return image.get_base_type() == Gimp.ImageBaseType.INDEXED
 
     def direct_mono():
-        image.convert_indexed(Gimp.ConvertDitherType.NONE, Gimp.ConvertPaletteType.MONO, 2, False, False, None)
+        image.convert_indexed(Gimp.ConvertDitherType.NONE, Gimp.ConvertPaletteType.MONO, 2, False, False, "")
 
-    def pdb(palette_type, palette=None):
+    def pdb(palette_type, palette=""):
         proc = Gimp.get_pdb().lookup_procedure("gimp-image-convert-indexed")
         cfg = proc.create_config()
         cfg.set_property("image", image)
@@ -71,8 +71,7 @@ def _to_bitmap(image):
         cfg.set_property("num-cols", 2)
         cfg.set_property("alpha-dither", False)
         cfg.set_property("remove-unused", False)
-        if palette is not None:
-            cfg.set_property("palette", palette)
+        cfg.set_property("palette", palette)
         result = proc.run(cfg)
         if result.index(0) != Gimp.PDBStatusType.SUCCESS:
             raise RuntimeError(Gimp.PDBStatusType(result.index(0)).value_nick)
@@ -82,11 +81,17 @@ def _to_bitmap(image):
         palette.add_entry("black", Gegl.Color.new("black"))
         palette.add_entry("white", Gegl.Color.new("white"))
         try:
-            pdb(Gimp.ConvertPaletteType.CUSTOM, palette)
+            try:
+                pdb(Gimp.ConvertPaletteType.CUSTOM, palette.get_name())
+            except TypeError:  # Releases where the argument is a GimpPalette.
+                pdb(Gimp.ConvertPaletteType.CUSTOM, palette)
         finally:
             palette.delete()
 
-    for attempt in (direct_mono, lambda: pdb(Gimp.ConvertPaletteType.MONO), pdb_custom):
+    def direct_mono_object():
+        image.convert_indexed(Gimp.ConvertDitherType.NONE, Gimp.ConvertPaletteType.MONO, 2, False, False, None)
+
+    for attempt in (direct_mono, direct_mono_object, lambda: pdb(Gimp.ConvertPaletteType.MONO), pdb_custom):
         try:
             attempt()
         except Exception as e:
