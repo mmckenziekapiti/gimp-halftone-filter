@@ -1,8 +1,8 @@
 # Letterpress Halftone for GIMP
 
 A GIMP 3 plug-in that turns a greyscale (or colour) image into a clean 1-bit
-AM halftone suitable for making a letterpress plate, such as a photopolymer
-plate exposed from film or a laser-imaged plate.
+AM halftone suitable for making a letterpress plate. It is tuned for etched
+magnesium and zinc photoengravings, and works for photopolymer too.
 
 GIMP's built-in *Newsprint* filter is meant for effects. This plug-in is
 meant for production: it works at the plate's real resolution, prints the
@@ -19,25 +19,27 @@ tone value you ask for, and keeps dots inside the range a plate can hold.
    dot drop to clean paper, and shadow holes that would fill in go solid,
    or both are held at the limit if you prefer.
 5. Screens with a rotated spot-function threshold. Thresholds are ranked by
-   area, so ink coverage matches the tone for every dot shape (within about
-   0.5% in the tests).
+   area, so ink coverage matches the tone for every dot shape (within 1% in
+   the tests). The screen is snapped to whole pixels, as hardware RIPs do,
+   so the LPI and angle you ask for may shift slightly; the output layer's
+   name shows what was used (e.g. 84.9 LPI at 45°).
 6. Opens the result as a new black/white indexed image at the output DPI,
-   ready for *File > Export As* to TIFF or PNG.
+   ready for *File > Export As* to TIFF (1-bit) to send to your platemaker.
 
 ## Options
 
 | Option | Default | Notes |
 | --- | --- | --- |
-| Screen frequency (LPI) | 85 | 65 to 100 LPI suits most photopolymer letterpress plates. Coarser holds up better on soft paper. |
+| Screen frequency (LPI) | 85 | 65 to 100 LPI suits etched magnesium; zinc and copper can hold a little finer. Coarser holds up better on soft paper. |
 | Output resolution (DPI) | 1200 | Match your imagesetter, film printer or platesetter. Keep DPI at least 10 times LPI: a cell gives about (DPI / LPI)² grey levels. |
 | Input resolution (PPI) | 0 | 0 uses the image's print size. Set it to override. |
 | Screen angle | 45° | 45° hides the pattern best for a single colour. |
 | Dot shape | Round | Round, Euclidean, Elliptical/chain, Square, Diamond, Line. Euclidean and Elliptical give smoother midtones. |
-| Dot gain at 50% (%) | 0 | Measure from a printed test strip. Letterpress commonly gains 10 to 20 points. |
-| Minimum dot (%) | 3 | Smallest dot your plate holds and inks reliably. |
-| Maximum dot (%) | 95 | Largest dot that still keeps a hole open on press. |
+| Dot gain at 50% (%) | 10 | Net change at a 50% dot from etching plus printing. Etching sharpens (shrinks) dots and printing spreads them, so measure from a printed test strip. Negative values grow the plate dots instead. |
+| Minimum dot (%) | 5 | Smallest dot that survives etching without being undercut away. |
+| Maximum dot (%) | 90 | Largest dot that still keeps a hole deep enough not to fill with ink. |
 | Hold min/max dots | Off | On keeps the limit dot instead of dropping to paper or solid. |
-| Negative (for film) | Off | Inverts the output, e.g. for a film negative to expose photopolymer. |
+| Negative (for film) | Off | Inverts the output, if you print your own film negatives. Leave off when sending files to a platemaker. |
 | Mirror (wrong-reading) | Off | Flips horizontally if your process needs it. |
 
 ## Install (GIMP 3.0 or later)
@@ -54,10 +56,9 @@ On Linux and macOS make sure `letterpress-halftone.py` is executable
 (`chmod +x`). Restart GIMP and look under *Filters > Distorts > Letterpress
 Halftone...*.
 
-The plug-in needs **numpy** in the Python that GIMP uses. Linux distribution
-and Flatpak builds usually use a Python that can have numpy installed;
-some Windows and macOS bundles do not include it. If numpy is missing the
-plug-in says so instead of running.
+Nothing else needs installing: the plug-in uses only the Python and GEGL
+that ship with GIMP, so it works with the standard Windows installer.
+A 4 x 6 inch plate at 1200 DPI takes a few seconds.
 
 ## Without GIMP
 
@@ -74,3 +75,7 @@ python3 tools/halftone_cli.py photo.png plate.tif --lpi 85 --dpi 1200 \
 pip install numpy pytest
 python3 -m pytest tests
 ```
+
+`tests/test_gegl_screen.py` also checks the GEGL path against the numpy
+reference pixel for pixel; it is skipped unless GEGL's Python bindings are
+installed (`gir1.2-gegl-0.4` and `python3-gi` on Debian/Ubuntu).

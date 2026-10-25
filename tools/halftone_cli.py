@@ -28,9 +28,9 @@ def main(argv=None):
     p.add_argument("--input-ppi", type=float, help="input resolution; defaults to the file's, else 300")
     p.add_argument("--angle", type=float, default=45.0, help="screen angle in degrees (default 45)")
     p.add_argument("--shape", choices=hc.DOT_SHAPES, default="round")
-    p.add_argument("--dot-gain", type=float, default=0.0, help="press gain at 50%%, in percent (e.g. 15)")
-    p.add_argument("--min-dot", type=float, default=0.0, help="smallest printable dot, percent")
-    p.add_argument("--max-dot", type=float, default=100.0, help="largest dot that keeps a hole, percent")
+    p.add_argument("--dot-gain", type=float, default=10.0, help="net gain at 50%%, in percent; negative for dot loss (default 10)")
+    p.add_argument("--min-dot", type=float, default=5.0, help="smallest printable dot, percent (default 5)")
+    p.add_argument("--max-dot", type=float, default=90.0, help="largest dot that keeps a hole, percent (default 90)")
     p.add_argument("--hold-extremes", action="store_true", help="hold min/max dots instead of dropping to paper/solid")
     p.add_argument("--negative", action="store_true", help="invert for film negatives")
     p.add_argument("--mirror", action="store_true", help="flip horizontally (wrong-reading)")
@@ -57,8 +57,9 @@ def main(argv=None):
     if a.mirror:
         plate = plate[:, ::-1]
     Image.fromarray(plate).convert("1").save(a.output, dpi=(a.dpi, a.dpi))
-    print("wrote %s: %dx%d px at %g dpi (%.2f x %.2f in)" % (
-        a.output, size[0], size[1], a.dpi, size[0] / a.dpi, size[1] / a.dpi))
+    screen = hc.Screen(a.lpi, a.dpi, a.angle, a.shape)
+    print("wrote %s: %dx%d px at %g dpi (%.2f x %.2f in), screen %.1f LPI at %.1f deg" % (
+        a.output, size[0], size[1], a.dpi, size[0] / a.dpi, size[1] / a.dpi, screen.lpi, screen.angle))
 
 
 if __name__ == "__main__":

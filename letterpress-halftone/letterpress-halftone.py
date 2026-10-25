@@ -4,9 +4,10 @@
 Filters > Distorts > Letterpress Halftone...
 
 The current image is flattened onto white, converted to greyscale, resampled
-from its print resolution to the output resolution, screened with
-halftone_core, and opened as a new 1-bit (black/white indexed) image ready
-to export as TIFF or PNG for platemaking.
+from its print resolution to the output resolution, screened (halftone_core
+for the maths, GEGL for the per-pixel work, so numpy is not needed), and
+opened as a new 1-bit (black/white indexed) image ready to export as TIFF
+for platemaking.
 """
 
 import os
@@ -65,7 +66,8 @@ class LetterpressHalftone(Gimp.PlugIn):
             "Screens the image with an AM halftone at the chosen frequency, angle and dot shape, "
             "compensating for press dot gain and limiting dots to the printable range. "
             "The result opens as a new black/white image at the output resolution. "
-            "Grey levels per cell are about (DPI / LPI)^2, so keep DPI at least 10x LPI.",
+            "Grey levels per cell are about (DPI / LPI)^2, so keep DPI at least 10x LPI. "
+            "LPI and angle are rounded slightly so the screen lines up with whole pixels.",
             name,
         )
         proc.set_attribution("gimp-halftone-filter contributors", "gimp-halftone-filter contributors", "2026")
@@ -84,12 +86,12 @@ class LetterpressHalftone(Gimp.PlugIn):
         proc.add_choice_argument("dot-shape", "Dot _shape", "Halftone dot shape", shapes, "round", rw)
 
         proc.add_double_argument("dot-gain", "Dot _gain at 50% (%)",
-                                 "Expected press gain at a 50% dot; the plate is thinned to compensate",
-                                 0.0, 24.0, 0.0, rw)
-        proc.add_double_argument("min-dot", "_Minimum dot (%)", "Smallest dot the plate can hold",
-                                 0.0, 50.0, 3.0, rw)
+                                 "Net gain at a 50% dot (press gain minus etch loss); negative if dots print smaller",
+                                 -20.0, 24.0, 10.0, rw)
+        proc.add_double_argument("min-dot", "_Minimum dot (%)", "Smallest dot that survives etching and inks reliably",
+                                 0.0, 50.0, 5.0, rw)
         proc.add_double_argument("max-dot", "Ma_ximum dot (%)", "Largest dot that still keeps an open hole",
-                                 50.0, 100.0, 95.0, rw)
+                                 50.0, 100.0, 90.0, rw)
         proc.add_boolean_argument("hold-extremes", "_Hold min/max dots",
                                   "Hold the minimum and maximum dot instead of dropping to paper or solid",
                                   False, rw)
@@ -98,12 +100,7 @@ class LetterpressHalftone(Gimp.PlugIn):
         return proc
 
     def run(self, procedure, run_mode, image, drawables, config, run_data):
-        try:
-            import numpy as np
-
-            import halftone_core as hc
-        except ImportError as e:
-            return _fail(procedure, "Letterpress Halftone needs numpy in GIMP's Python (%s)." % e)
+        import gegl_screen
 
         if run_mode == Gimp.RunMode.INTERACTIVE:
             GimpUi.init(PROC_NAME)
@@ -138,23 +135,19 @@ class LetterpressHalftone(Gimp.PlugIn):
             out.set_resolution(dpi, dpi)
             layer = out.get_layers()[0]
 
-            rect = Gegl.Rectangle.new(0, 0, w, h)
-            buf = layer.get_buffer()
-            grey = np.frombuffer(buf.get(rect, 1.0, "Y' u8", Gegl.AbyssPolicy.CLAMP), dtype=np.uint8).reshape(h, w)
-
-            plate = hc.halftone(
-                grey, lpi=lpi, dpi=dpi, angle=get("angle"), shape=get("dot-shape"),
+            grey = layer.get_buffer().get(Gegl.Rectangle.new(0, 0, w, h), 1.0, "Y' u8", Gegl.AbyssPolicy.CLAMP)
+            shadow = layer.get_shadow_buffer()
+            screen = gegl_screen.screen_buffer(
+                grey, w, h, shadow, lpi=lpi, dpi=dpi, angle=get("angle"), shape=get("dot-shape"),
                 gain50=get("dot-gain") / 100.0, min_dot=get("min-dot") / 100.0, max_dot=get("max-dot") / 100.0,
                 hold_extremes=get("hold-extremes"), progress=Gimp.progress_update,
             )
-            if get("negative"):
-                plate = 255 - plate
-            if get("mirror"):
-                plate = plate[:, ::-1]
-
-            buf.set(rect, "Y' u8", np.ascontiguousarray(plate).tobytes())
-            buf.flush()
+            layer.merge_shadow(False)
             layer.update(0, 0, w, h)
+            if get("negative"):
+                layer.invert(False)
+            if get("mirror"):
+                out.flip(Gimp.OrientationType.HORIZONTAL)
 
             # Two-colour palette so it exports as a true 1-bit file.
             try:
@@ -163,6 +156,7 @@ class LetterpressHalftone(Gimp.PlugIn):
                 Gimp.message("Kept the plate as greyscale (0/255 only); indexed conversion failed: %s" % e)
 
             out.undo_enable()
+            out.get_layers()[0].set_name("Plate %.1f LPI %.1f deg %s" % (screen.lpi, screen.angle, get("dot-shape")))
             Gimp.Display.new(out)
             Gimp.displays_flush()
             Gimp.progress_end()
