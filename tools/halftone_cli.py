@@ -33,6 +33,8 @@ def main(argv=None):
     p.add_argument("--max-dot", type=float, default=90.0, help="largest dot that keeps a hole, percent (default 90)")
     p.add_argument("--hold-extremes", action=argparse.BooleanOptionalAction, default=True,
                    help="hold min/max dots instead of dropping to paper/solid (default on)")
+    p.add_argument("--solid-text", action=argparse.BooleanOptionalAction, default=True,
+                   help="snap the grey edges of black text to solid black or paper (default on)")
     p.add_argument("--negative", action="store_true", help="invert for film negatives")
     p.add_argument("--mirror", action="store_true", help="flip horizontally (wrong-reading)")
     a = p.parse_args(argv)
@@ -46,10 +48,15 @@ def main(argv=None):
     ppi = a.input_ppi or (img.info.get("dpi") or (300, 300))[0] or 300
     scale = a.dpi / float(ppi)
     size = (max(1, round(img.width * scale)), max(1, round(img.height * scale)))
-    img = img.resize(size, Image.LANCZOS)
+    # Like the plug-in: cubic when enlarging, since Lanczos rings into faint
+    # halos around type that the screen would print as rows of dots.
+    img = img.resize(size, Image.BICUBIC if scale > 1 else Image.LANCZOS)
 
+    grey = np.asarray(img)
+    if a.solid_text:
+        grey = hc.snap_edges(grey, hc.edge_radius(scale))
     plate = hc.halftone(
-        np.asarray(img), lpi=a.lpi, dpi=a.dpi, angle=a.angle, shape=a.shape,
+        grey, lpi=a.lpi, dpi=a.dpi, angle=a.angle, shape=a.shape,
         gain50=a.dot_gain / 100.0, min_dot=a.min_dot / 100.0, max_dot=a.max_dot / 100.0,
         hold_extremes=a.hold_extremes,
     )

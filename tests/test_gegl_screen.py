@@ -32,3 +32,16 @@ def test_gegl_matches_reference(shape, angle):
                         dtype=np.uint8).reshape(h, w)
     want = hc.halftone(grey, **kw)
     assert np.array_equal(got, want)
+
+
+def test_gegl_snap_edges_matches_reference():
+    h, w = 240, 360
+    yy, xx = np.mgrid[0:h, 0:w]
+    grey = ((xx * 255) // (w - 1)).astype(np.uint8)
+    grey[60:180, 100:110] = 0  # A black bar over the ramp.
+    grey[100:140, 200:300] = 30
+    rng = np.random.default_rng(3)
+    grey = np.clip(grey.astype(int) + rng.integers(-40, 40, (h, w)), 0, 255).astype(np.uint8)
+    for radius in (2, 6):
+        got = np.frombuffer(gegl_screen.snap_edges(grey.tobytes(), w, h, radius), dtype=np.uint8).reshape(h, w)
+        assert np.array_equal(got, hc.snap_edges(grey, radius)), radius
