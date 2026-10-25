@@ -48,6 +48,54 @@ def _image_ppi(image):
     return float(res[0]) or 300.0
 
 
+def _to_bitmap(image):
+    """Convert to a black/white indexed image. Returns None, or the errors seen.
+
+    Tries a few routes because the palette argument's binding differs
+    between GIMP 3 releases.
+    """
+    errors = []
+
+    def indexed():
+        return image.get_base_type() == Gimp.ImageBaseType.INDEXED
+
+    def direct_mono():
+        image.convert_indexed(Gimp.ConvertDitherType.NONE, Gimp.ConvertPaletteType.MONO, 2, False, False, None)
+
+    def pdb(palette_type, palette=None):
+        proc = Gimp.get_pdb().lookup_procedure("gimp-image-convert-indexed")
+        cfg = proc.create_config()
+        cfg.set_property("image", image)
+        cfg.set_property("dither-type", Gimp.ConvertDitherType.NONE)
+        cfg.set_property("palette-type", palette_type)
+        cfg.set_property("num-cols", 2)
+        cfg.set_property("alpha-dither", False)
+        cfg.set_property("remove-unused", False)
+        if palette is not None:
+            cfg.set_property("palette", palette)
+        result = proc.run(cfg)
+        if result.index(0) != Gimp.PDBStatusType.SUCCESS:
+            raise RuntimeError(Gimp.PDBStatusType(result.index(0)).value_nick)
+
+    def pdb_custom():
+        palette = Gimp.Palette.new("Letterpress black-white")
+        palette.add_entry("black", Gegl.Color.new("black"))
+        palette.add_entry("white", Gegl.Color.new("white"))
+        try:
+            pdb(Gimp.ConvertPaletteType.CUSTOM, palette)
+        finally:
+            palette.delete()
+
+    for attempt in (direct_mono, lambda: pdb(Gimp.ConvertPaletteType.MONO), pdb_custom):
+        try:
+            attempt()
+        except Exception as e:
+            errors.append(str(e) or type(e).__name__)
+        if indexed():
+            return None
+    return "; ".join(errors) or "GIMP returned no error"
+
+
 class LetterpressHalftone(Gimp.PlugIn):
     def do_query_procedures(self):
         return [PROC_NAME]
@@ -153,10 +201,9 @@ class LetterpressHalftone(Gimp.PlugIn):
                 out.flip(Gimp.OrientationType.HORIZONTAL)
 
             # Two-colour palette so it exports as a true 1-bit file.
-            try:
-                out.convert_indexed(Gimp.ConvertDitherType.NONE, Gimp.ConvertPaletteType.MONO, 2, False, False, None)
-            except Exception as e:  # The plate is already pure black/white.
-                Gimp.message("Kept the plate as greyscale (0/255 only); indexed conversion failed: %s" % e)
+            error = _to_bitmap(out)
+            if error:  # The plate is already pure black/white.
+                Gimp.message("Kept the plate as greyscale (0/255 only); indexed conversion failed: %s" % error)
 
             out.undo_enable()
             out.get_layers()[0].set_name("Plate %.1f LPI %.1f deg %s" % (screen.lpi, screen.angle, get("dot-shape")))
