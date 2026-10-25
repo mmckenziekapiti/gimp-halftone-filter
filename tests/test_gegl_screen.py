@@ -6,8 +6,9 @@ import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "letterpress-halftone"))
 
-gi = pytest.importorskip("gi")
 try:
+    import gi
+
     gi.require_version("Gegl", "0.4")
     from gi.repository import Gegl
 except (ImportError, ValueError):
