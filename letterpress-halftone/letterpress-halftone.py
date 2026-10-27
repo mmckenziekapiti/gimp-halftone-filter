@@ -4,7 +4,8 @@
 Filters > Distorts > Letterpress Halftone...
 
 The current image is flattened onto white, converted to greyscale, resampled
-from its print resolution to the output resolution, screened (halftone_core
+from its print resolution to the output resolution, has the grey fringe of
+black text snapped to solid, screened (halftone_core
 for the maths, GEGL for the per-pixel work, so numpy is not needed), and
 opened as a new 1-bit (black/white indexed) image ready to export as TIFF
 for platemaking.
@@ -148,12 +149,16 @@ class LetterpressHalftone(Gimp.PlugIn):
         proc.add_boolean_argument("hold-extremes", "_Hold min/max dots",
                                   "Hold the minimum and maximum dot instead of dropping to paper or solid",
                                   True, rw)
+        proc.add_boolean_argument("solid-text", "Keep _text solid",
+                                  "Snap the grey anti-aliased edges of black text and line art to solid black or paper "
+                                  "instead of screening them", True, rw)
         proc.add_boolean_argument("negative", "_Negative (for film)", "Invert the output", False, rw)
         proc.add_boolean_argument("mirror", "Mi_rror (wrong-reading)", "Flip the output horizontally", False, rw)
         return proc
 
     def run(self, procedure, run_mode, image, drawables, config, run_data):
         import gegl_screen
+        import halftone_core
 
         if run_mode == Gimp.RunMode.INTERACTIVE:
             GimpUi.init(PROC_NAME)
@@ -192,6 +197,8 @@ class LetterpressHalftone(Gimp.PlugIn):
             layer = out.get_layers()[0]
 
             grey = layer.get_buffer().get(Gegl.Rectangle.new(0, 0, w, h), 1.0, "Y' u8", Gegl.AbyssPolicy.CLAMP)
+            if get("solid-text"):
+                grey = gegl_screen.snap_edges(grey, w, h, halftone_core.edge_radius(scale))
             shadow = layer.get_shadow_buffer()
             screen = gegl_screen.screen_buffer(
                 grey, w, h, shadow, lpi=lpi, dpi=dpi, angle=get("angle"), shape=get("dot-shape"),

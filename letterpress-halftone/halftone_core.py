@@ -99,6 +99,57 @@ def coverage_lut(gain50=0.0, min_dot=0.0, max_dot=1.0, hold_extremes=False):
     return bytes(out)
 
 
+# Text edges: a pixel is treated as an anti-aliased edge of black line art
+# when, within the search radius, the darkest pixel is at least this dark
+# (grey level, 0 = black; thin lines never quite reach 0 once blurred) and
+# the tones span at least this much.
+EDGE_DARK = 48
+EDGE_CONTRAST = 128
+
+
+def edge_radius(scale):
+    """Search radius in output pixels for snap_edges(), after resampling by `scale`.
+
+    Anti-aliasing plus the resampling filter blur an edge over about three
+    source pixels, so look one and a half source pixels each way.
+    """
+    return max(2, int(math.ceil(1.5 * scale)))
+
+
+def snap_edges(grey, radius):
+    """Snap the grey fringe of black text and line art to its neighbours (numpy).
+
+    Within `radius` of dark line art, a pixel darker than the midpoint of
+    the darkest and lightest pixels nearby becomes solid black, and any
+    other takes the lightest value nearby (paper, or the tone behind the
+    text). Black text becomes solid with clean edges at the 50% line,
+    instead of its fringe being screened into a ragged, eaten-into edge.
+    Elsewhere, including the soft tones of a photo, nothing changes. The plug-in does the same with GEGL (gegl_screen).
+    """
+    import numpy as np
+
+    grey = np.asarray(grey, dtype=np.uint8)
+    h, w = grey.shape
+
+    def square_filter(a, fn):
+        # A square window is a row pass then a column pass.
+        p = np.pad(a, ((0, 0), (radius, radius)), mode="edge")
+        out = a.copy()
+        for d in range(2 * radius + 1):
+            fn(out, p[:, d:d + w], out=out)
+        p = np.pad(out, ((radius, radius), (0, 0)), mode="edge")
+        for d in range(2 * radius + 1):
+            fn(out, p[d:d + h], out=out)
+        return out
+
+    lo = square_filter(grey, np.minimum)
+    hi = square_filter(grey, np.maximum)
+    g, lo, hi = grey.astype(np.int16), lo.astype(np.int16), hi.astype(np.int16)
+    edge = (lo <= EDGE_DARK) & (hi - lo >= EDGE_CONTRAST)
+    snapped = np.where(lo + hi - 2 * g > 0, 0, hi)
+    return np.where(edge, snapped, g).astype(np.uint8)
+
+
 def _ext_gcd(a, b):
     if b == 0:
         return a, 1, 0

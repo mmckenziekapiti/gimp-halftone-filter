@@ -18,12 +18,15 @@ tone value you ask for, and keeps dots inside the range a plate can hold.
 4. Clamps tones to the printable range: highlight dots below the minimum
    dot and shadow holes that would fill in are held at the limit dot, or
    dropped to clean paper and solid if you prefer.
-5. Screens with a rotated spot-function threshold. Thresholds are ranked by
+5. Keeps black text and line art solid: the grey anti-aliased fringe around
+   black type is snapped to solid black or to the tone beside it, so letters
+   print with crisp edges instead of a screened, eaten-into edge.
+6. Screens with a rotated spot-function threshold. Thresholds are ranked by
    area, so ink coverage matches the tone for every dot shape (within 1% in
    the tests). The screen is snapped to whole pixels, as hardware RIPs do,
    so the LPI and angle you ask for may shift slightly; the output layer's
    name shows what was used (e.g. 84.9 LPI at 45°).
-6. Opens the result as a new black/white indexed image at the output DPI,
+7. Opens the result as a new black/white indexed image at the output DPI,
    ready for *File > Export As* to TIFF (1-bit) to send to your platemaker.
 
 ## Options
@@ -39,6 +42,7 @@ tone value you ask for, and keeps dots inside the range a plate can hold.
 | Minimum dot (%) | 5 | Smallest dot that survives etching without being undercut away. |
 | Maximum dot (%) | 90 | Largest dot that still keeps a hole deep enough not to fill with ink. |
 | Hold min/max dots | On | Keeps the limit dot instead of dropping to paper or solid. Off gives clean paper in the highlights and solid shadows, but crushed photo shadows can turn into black blotches. |
+| Keep text solid | On | Within about 1.5 source pixels of black (darker than about 80%) type or rules, pixels darker than halfway between the nearby black and the nearby light tone become solid, and the rest take that light tone. Soft photo tones are left alone, though hard black edges inside a photo are sharpened the same way. Turn it off for a photo only image if you want every edge screened. |
 | Negative (for film) | Off | Inverts the output, if you print your own film negatives. Leave off when sending files to a platemaker. |
 | Mirror (wrong-reading) | Off | Flips horizontally if your process needs it. |
 

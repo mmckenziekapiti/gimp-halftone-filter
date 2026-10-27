@@ -77,3 +77,40 @@ def test_numpy_is_optional():
         % os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "letterpress-halftone")
     )
     subprocess.check_call([sys.executable, "-c", code])
+
+
+def _soft_text_on_photo():
+    """Anti-aliased black bars upsampled 4x (like 300 -> 1200 PPI), beside a smooth ramp."""
+    src = np.full((60, 120), 255.0)
+    src[10:50, 10:14] = 0.0
+    src[10:14, 10:50] = 0.0
+    src[10:50, 20] = 0.0  # A hairline.
+    src[30:50, 30] = 255 * 0.4  # A partly covered column, as anti-aliasing leaves.
+    src[30:50, 29] = 0.0
+    src[:, 70:] = np.linspace(255, 0, 50)  # The photo part.
+    big = np.kron(src, np.ones((4, 4)))
+    # Soften like a resampling filter.
+    k = np.array([1, 4, 6, 4, 1], float) / 16
+    for axis in (0, 1):
+        big = np.apply_along_axis(lambda r: np.convolve(np.pad(r, 2, mode="edge"), k, "valid"), axis, big)
+    return np.round(big).astype(np.uint8)
+
+
+def test_snap_edges_makes_text_solid_and_clean():
+    grey = _soft_text_on_photo()
+    out = hc.snap_edges(grey, hc.edge_radius(4))
+    text = out[:, :260]
+    assert set(np.unique(text)) <= {0, 255}
+    # Edges stay put: as much ink as the 50% line encloses, and the hairline survives.
+    assert abs(np.mean(text == 0) - np.mean(grey[:, :260] < 128)) < 0.005
+    assert np.all(out[50:190, 81] == 0)
+    # The smooth ramp, away from any black, is untouched.
+    assert np.array_equal(out[:, 290:], grey[:, 290:])
+
+
+def test_snap_edges_leaves_photo_tones_alone():
+    ramp = np.tile(np.linspace(255, 0, 400).astype(np.uint8), (50, 1))
+    assert np.array_equal(hc.snap_edges(ramp, 6), ramp)
+    patch = np.full((50, 50), 40, np.uint8)
+    patch[20:30, 20:30] = 120  # Mid-tone detail in a shadow: too little contrast.
+    assert np.array_equal(hc.snap_edges(patch, 6), patch)
