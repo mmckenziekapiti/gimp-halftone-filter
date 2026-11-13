@@ -60,6 +60,46 @@ def _run(graph, node, width, height):
     return target
 
 
+# Rows per Gegl.Buffer.set call when filling a hatch pattern.
+_STRIP_ROWS = 256
+
+
+def _pattern(hatch, width, height):
+    buf = Gegl.Buffer.new("Y u8", 0, 0, width, height)
+    for y0 in range(0, height, _STRIP_ROWS):
+        y1 = min(height, y0 + _STRIP_ROWS)
+        buf.set(Gegl.Rectangle.new(0, y0, width, y1 - y0), "Y u8", hatch.rows_bytes(y0, y1, width))
+    return buf
+
+
+def _union(graph, a, b):
+    return _positive(graph, _math(graph, "gegl:subtract", _math(graph, "gegl:add", a, b), value=0.5))
+
+
+def _shading(graph, smooth, s, width, height):
+    """Hatch lines over the darker tones. Returns a 0/1 node, or None."""
+    if not s.hatches:
+        return None
+    # Darkness 0..1, smoothed so the hatching follows broad tone, not grain.
+    dark = _math(graph, "gegl:add", _math(graph, "gegl:multiply", _blur(graph, smooth, s.tone_sigma), value=-1.0),
+                 value=1.0)
+    shade = None
+    for h in s.hatches:
+        pattern = _node(graph, "gegl:buffer-source", buffer=_pattern(h, width, height))
+        c0, c1 = h.w_min / h.spacing, h.w_max / h.spacing
+        slope = (c1 - c0) / (h.full - h.start)
+        # Line width (as a fraction of the pitch) for this darkness, before
+        # the cap at c1: c0 + slope * (dark - start).
+        cov = _math(graph, "gegl:add", _math(graph, "gegl:multiply", dark, value=slope), value=c0 - slope * h.start)
+        ink = _positive(graph, _math(graph, "gegl:subtract", cov, pattern))
+        on = _positive(graph, _math(graph, "gegl:subtract", dark, value=h.start))
+        capped = _positive(graph, _math(graph, "gegl:subtract", _math(graph, "gegl:multiply", pattern, value=-1.0),
+                                        value=-(c1 + _HALF)))
+        ink = _math(graph, "gegl:multiply", _math(graph, "gegl:multiply", ink, on), capped)
+        shade = ink if shade is None else _union(graph, shade, ink)
+    return shade
+
+
 def find_edges(grey, width, height, s):
     """Simplify, find edges and fill shadows.
 
@@ -80,15 +120,17 @@ def find_edges(grey, width, height, s):
     weak = _positive(graph, _math(graph, "gegl:subtract", dog, value=s.threshold_low))
     strong = _positive(graph, _math(graph, "gegl:subtract", dog, value=s.threshold))
 
+    # Shading and solid shadows count as strong ink: they are never faint
+    # stretches of a line, and they are kept unless they are specks.
+    shade = _shading(graph, smooth, s, width, height)
+    if shade is not None:
+        weak, strong = _union(graph, weak, shade), _union(graph, strong, shade)
+
     if s.fill_shadows:
         # Ink where smooth <= level, i.e. level - smooth + half a grey step > 0.
         dark = _positive(graph, _math(graph, "gegl:add", _math(graph, "gegl:multiply", smooth, value=-1.0),
                                       value=s.shadow_level + _HALF))
-
-        def union(a, b):
-            return _positive(graph, _math(graph, "gegl:subtract", _math(graph, "gegl:add", a, b), value=0.5))
-
-        weak, strong = union(weak, dark), union(strong, dark)
+        weak, strong = _union(graph, weak, dark), _union(graph, strong, dark)
     return _run(graph, weak, width, height), _run(graph, strong, width, height)
 
 

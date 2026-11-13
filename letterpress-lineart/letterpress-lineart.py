@@ -25,6 +25,12 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 PROC_NAME = "plug-in-letterpress-lineart"
 
+SHADING_LABELS = (
+    ("none", "None (outlines only)"),
+    ("hatch", "Hatching"),
+    ("cross", "Cross-hatching"),
+)
+
 
 def _fail(procedure, message):
     return procedure.new_return_values(
@@ -108,7 +114,8 @@ class LetterpressLineArt(Gimp.PlugIn):
         proc.add_menu_path("<Image>/Filters/Artistic")
         proc.set_documentation(
             "Turn a photograph into 1-bit line art for a letterpress plate",
-            "Draws the edges of the image as black lines on white, at the output resolution. "
+            "Draws the edges of the image as black lines on white, at the output resolution, "
+            "and shades darker tones with hatching or cross-hatching. "
             "Line weight is roughly the width of the line along a strong edge; Detail sets how faint "
             "an edge still gets a line. Specks are removed, and lines and gaps narrower than the "
             "minimum width are cleaned up so the plate etches and inks cleanly. "
@@ -125,6 +132,15 @@ class LetterpressLineArt(Gimp.PlugIn):
         proc.add_double_argument("simplify", "_Simplify (pt)",
                                  "Smooth away texture and noise smaller than this before finding edges; 0 is off",
                                  0.0, 12.0, 0.5, rw)
+        shading = Gimp.Choice.new()
+        for i, (nick, label) in enumerate(SHADING_LABELS):
+            shading.add(nick, i, label, "")
+        proc.add_choice_argument("shading", "Sh_ading", "Shade darker tones with hatch lines", shading, "cross", rw)
+        proc.add_double_argument("shade-from", "Shade _from (% dark)",
+                                 "Tones darker than this get hatching; more layers come in as the tone darkens",
+                                 0.0, 100.0, 45.0, rw)
+        proc.add_double_argument("hatch-spacing", "_Hatch spacing (pt)", "Distance between hatch lines, in points",
+                                 1.0, 24.0, 4.0, rw)
         proc.add_double_argument("shadows", "Solid s_hadows (% dark)",
                                  "Fill tones at least this dark with solid black; 0 is off", 0.0, 100.0, 0.0, rw)
         proc.add_double_argument("speck", "Remove spec_ks (pt)",
@@ -163,6 +179,7 @@ class LetterpressLineArt(Gimp.PlugIn):
         settings = lineart_core.Settings(
             dpi, weight=get("line-weight"), detail=get("detail"), simplify=get("simplify"),
             shadows=get("shadows"), speck=get("speck"), min_width=get("min-width"),
+            shading=get("shading"), shade_from=get("shade-from"), hatch_spacing=get("hatch-spacing"),
         )
 
         Gimp.context_push()

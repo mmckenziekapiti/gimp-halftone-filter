@@ -22,7 +22,11 @@ DPI = 1200.0
 
 
 def draw(grey, **kw):
-    """Run the filter; returns a bool array, True where ink prints."""
+    """Run the filter; returns a bool array, True where ink prints.
+
+    Shading is off unless asked for, so the edge tests see only lines.
+    """
+    kw.setdefault("shading", "none")
     h, w = grey.shape
     target = Gegl.Buffer.new("Y u8", 0, 0, w, h)
     gl.line_art(np.ascontiguousarray(grey, dtype=np.uint8).tobytes(), w, h, target, lc.Settings(DPI, **kw))
@@ -145,3 +149,50 @@ def test_dropping_specks_leaves_other_marks_untouched():
     with_specks, without = draw(g, speck=0), draw(g)
     assert with_specks[65:90].any() and not without[65:90].any()
     assert np.array_equal(with_specks[:62], without[:62])
+
+
+def flat(darkness, size=400):
+    return np.full((size, size), int(round(255 * (1 - darkness))), np.uint8)
+
+
+def test_shading_darkens_with_tone():
+    inner = (slice(60, 340), slice(60, 340))
+    cover = [draw(flat(d), shading="cross")[inner].mean() for d in (0.2, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0)]
+    assert cover[0] == 0 and cover[1] == 0  # Lighter than shade-from (45%).
+    assert all(b >= a for a, b in zip(cover, cover[1:])), cover
+    assert 0.1 < cover[2] < 0.35 and cover[-1] > 0.5
+    # Hatching alone stops at one layer.
+    assert draw(flat(1.0), shading="hatch")[inner].mean() < cover[-1]
+
+
+def test_hatch_lines_run_diagonally_at_the_spacing():
+    ink = draw(flat(0.55), shading="hatch", hatch_spacing=4.0)[60:340, 60:340]
+    # Rising to the right: each row is the one below shifted left by one px.
+    assert np.mean(ink[:-1, 1:] == ink[1:, :-1]) > 0.97
+    starts = np.count_nonzero(ink[140, 1:] & ~ink[140, :-1])
+    pitch_px = 4.0 * DPI / 72 * np.sqrt(2)  # Along a row.
+    assert abs(starts - 279 / pitch_px) <= 1
+
+
+def test_cross_hatching_adds_the_second_direction():
+    # With shade-from 45%, the first (rising) layer is full width at about
+    # 63% and the second (falling) layer starts there.
+    cross = draw(flat(0.75), shading="cross")[60:340, 60:340]
+    single = draw(flat(0.62), shading="cross")[60:340, 60:340]
+    extra = cross & ~single
+    assert extra.mean() > 0.05
+    # The added lines fall to the right: each row is the one above shifted right.
+    # Given an added ink pixel, the one 20 px diagonally below right (further
+    # than a line is wide) is ink too, much more often than below left.
+    k = 20
+    falling = np.mean(extra[k:, k:][extra[:-k, :-k]])
+    rising = np.mean(extra[k:, :-k][extra[:-k, k:]])
+    assert falling > rising + 0.2, (falling, rising)
+
+
+@pytest.mark.parametrize("darkness", [0.5, 0.7, 0.95])
+def test_hatch_lines_are_at_least_min_width(darkness):
+    s = lc.Settings(DPI)
+    ink = draw(flat(darkness, 300), shading="cross")
+    r = s.min_radius
+    assert np.array_equal(morph(morph(ink, r, np.logical_and), r, np.logical_or), ink)

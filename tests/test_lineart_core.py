@@ -76,3 +76,37 @@ def test_mark_block_is_a_small_power_of_two():
     assert lc.mark_block(1) == 1 and lc.mark_block(15) == 1
     assert lc.mark_block(16) == 2 and lc.mark_block(33) == 4
     assert lc.mark_block(1000) == 8
+
+
+def test_hatch_layers_split_the_tone_range():
+    layers = lc.hatch_layers("cross", 60.0, 0.4, 8.0)
+    assert [h.angle for h in layers] == list(lc.HATCH_ANGLES)
+    assert layers[0].start == 0.4 and abs(layers[-1].full - 1.0) < 1e-9
+    for a, b in zip(layers, layers[1:]):
+        assert abs(a.full - b.start) < 1e-9
+    h = layers[0]
+    assert h.coverage(0.39) == 0
+    assert abs(h.coverage(0.41) * h.spacing - h.w_min) < 1.0
+    assert abs(h.coverage(1.0) * h.spacing - h.w_max) < 1e-9
+    # Lines and the gaps between them both stay wider than the minimum.
+    assert h.w_min >= 8.0 and h.spacing - h.w_max >= 8.0
+    assert lc.hatch_layers("none", 60.0, 0.4, 8.0) == []
+    assert len(lc.hatch_layers("hatch", 60.0, 0.4, 8.0)) == 1
+
+
+def test_hatch_rows_follow_the_angle():
+    for angle, shift in ((45, 1), (-45, -1), (0, None)):
+        h = lc.Hatch(angle, 20.0, 0.3, 1.0, 4.0, 6.0)
+        w = 50
+        rows = h.rows_bytes(5, 15, w)
+        assert len(rows) == 10 * w
+        # Fetching a band on its own gives the same rows.
+        assert h.rows_bytes(8, 10, w) == rows[3 * w:5 * w]
+        for y in range(9):
+            r0, r1 = rows[y * w:(y + 1) * w], rows[(y + 1) * w:(y + 2) * w]
+            if shift is None:
+                assert len(set(r0)) == 1
+            elif shift == 1:
+                assert r1[:-1] == r0[1:]
+            else:
+                assert r1[1:] == r0[:-1]

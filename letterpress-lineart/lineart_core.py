@@ -19,8 +19,11 @@ How a pixel is decided (all at the output resolution):
    detail inks fainter edges. Where a line fades, it is carried on down to
    half that level as long as it stays joined to the stronger part, so
    outlines stay continuous instead of breaking into dashes.
-4. Optionally fill tones darker than a set percentage solid ("spot
-   blacks"), as an illustrator would for deep shadows and black clothes.
+4. Shade the darker tones with hatching: layers of parallel lines (45°,
+   then -45°, then horizontal for cross-hatching) that come in one after
+   another as the smoothed tone darkens, each thickening within its share
+   of the tone range. Optionally also fill tones darker than a set
+   percentage solid ("spot blacks").
 5. Clean up for the plate: marks smaller than the speck size in both
    directions are dropped (lines are long, so they stay, while noise,
    texture and short dashes go), and the edges are smoothed. Then white
@@ -181,11 +184,88 @@ def select_marks(ink, strong, width, height, max_extent):
 _NONZERO_TO_FF = bytes([0] + [255] * 255)
 
 
+HATCH_STYLES = ("none", "hatch", "cross")
+
+# Hatch layers in the order they come in as the tone darkens: angle in
+# degrees from horizontal, 45 rising to the right on the page.
+HATCH_ANGLES = (45, -45, 0)
+
+# Widest a hatch line gets, as a fraction of the pitch. Kept thin so the
+# layers read as drawn lines rather than a screen; darker tones come from
+# adding layers, and solid shadows can take over at the darkest end.
+MAX_HATCH_WIDTH = 0.3
+
+
+class Hatch(object):
+    """One layer of parallel hatch lines whose width grows with darkness.
+
+    Lines start at `start` darkness (0..1) at width w_min px and widen
+    linearly to w_max px at `full` darkness. spacing is the line pitch in px.
+    """
+
+    def __init__(self, angle, spacing, start, full, w_min, w_max):
+        self.angle, self.spacing = angle, spacing
+        self.start, self.full = start, full
+        self.w_min, self.w_max = w_min, w_max
+
+    def coverage(self, darkness):
+        """Line width as a fraction of the spacing, 0 where this layer is off."""
+        if darkness <= self.start:
+            return 0.0
+        t = min(1.0, (darkness - self.start) / (self.full - self.start))
+        return (self.w_min + t * (self.w_max - self.w_min)) / self.spacing
+
+    def rows_bytes(self, y0, y1, width):
+        """Distance pattern for rows y0..y1-1 as row-major bytes.
+
+        Each byte is 255 x the distance from the nearest line centre as a
+        fraction of the spacing, times 2: a line w px wide covers the pixels
+        whose byte is below 255 * w / spacing. Pixels further out than the
+        widest line ever gets are 255, so the line never grows past w_max.
+        """
+        if self.angle == 0:
+            return b"".join(bytes([self._value(y, self.spacing)]) * width for y in range(y0, y1))
+        if self.angle not in (45, -45):
+            raise ValueError("unsupported hatch angle %r" % (self.angle,))
+        # With y pointing down the page, x + y is constant along a line
+        # rising to the right, x - y along one falling to the right; across
+        # the lines that sum steps by spacing * sqrt(2) per pitch.
+        pitch = self.spacing * math.sqrt(2.0)
+        if self.angle == 45:
+            base = bytes(self._value(n, pitch) for n in range(y0, y1 + width))
+            return b"".join(base[y - y0:y - y0 + width] for y in range(y0, y1))
+        base = bytes(self._value(n, pitch) for n in range(-y1, width - y0))
+        return b"".join(base[y1 - y:y1 - y + width] for y in range(y0, y1))
+
+    def _value(self, n, pitch):
+        f = (n / pitch) % 1.0
+        d = 2.0 * min(f, 1.0 - f)  # 0 on a line centre, 1 midway between lines.
+        if d * self.spacing >= self.w_max + 1.0:
+            return 255
+        return min(254, int(d * 255.0 + 0.5))
+
+
+def hatch_layers(style, spacing, start, min_width):
+    """Hatch layers for a style, in px, splitting darkness start..1 between them.
+
+    Lines are never narrower than about 1.3 x min_width, nor the gaps
+    between parallel lines, so they survive the plate cleanup.
+    """
+    n = {"none": 0, "hatch": 1, "cross": 3}[style]
+    if n == 0 or start >= 1.0:
+        return []
+    w_min = max(1.0, 1.3 * min_width)
+    w_max = max(w_min, min(MAX_HATCH_WIDTH * spacing, spacing - 1.3 * min_width))
+    band = (1.0 - start) / n
+    return [Hatch(HATCH_ANGLES[i], spacing, start + i * band, start + (i + 1) * band, w_min, w_max)
+            for i in range(n)]
+
+
 class Settings(object):
     """Filter settings converted to pixels at the output resolution."""
 
     def __init__(self, dpi, weight=1.0, detail=60.0, simplify=0.5, shadows=0.0,
-                 speck=2.0, min_width=0.5):
+                 speck=2.0, min_width=0.5, shading="cross", shade_from=45.0, hatch_spacing=4.0):
         self.dpi = float(dpi)
         # Median radius in whole pixels; 0 skips the step.
         self.simplify_radius = int(round(px(simplify, dpi) / 2.0))
@@ -206,5 +286,10 @@ class Settings(object):
         # narrower than the minimum, and an opening removes black lines
         # narrower than it, so everything left can be etched and inked.
         self.smooth_sigma = max(0.7, px(weight, dpi) / 8.0)
+        # Shading: hatch lines over tones darker than shade_from percent,
+        # following the tone smoothed over about a third of a hatch pitch.
+        spacing = max(4.0, px(hatch_spacing, dpi))
+        self.hatches = hatch_layers(shading, spacing, min(100.0, max(0.0, shade_from)) / 100.0, px(min_width, dpi))
+        self.tone_sigma = spacing / 3.0
         self.min_radius = int(round(px(min_width, dpi) / 2.0))
 

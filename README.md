@@ -53,8 +53,9 @@ tone value you ask for, and keeps dots inside the range a plate can hold.
 ## Letterpress Line Art
 
 *Filters > Artistic > Letterpress Line Art...* draws a photograph as black
-lines on white, like an ink drawing, so it can be printed from a line plate
-with no screen at all.
+lines on white, like a pen and ink drawing: outlines for the edges and
+hatching or cross-hatching for the darker tones. It prints from a line
+plate with no halftone screen.
 
 1. Flattens the image onto white, converts it to greyscale and resamples it
    to the output DPI, as the halftone does, so line widths are real sizes.
@@ -67,14 +68,19 @@ with no screen at all.
 4. Inks every edge stronger than the Detail setting. Where an edge fades
    out, its line carries on down to half that strength as long as it stays
    joined to the strong part, so outlines don't break up into dashes.
-5. Optionally fills the darkest tones solid, for a bolder graphic look.
-6. Removes specks: marks smaller than the speck size in both directions.
+5. Shades the darker tones with hatching. Lines at 45° come in at the
+   *Shade from* tone and thicken as it darkens; with cross-hatching, a
+   second set at -45° and then a third, horizontal set are added for the
+   darker tones. The shading follows the photo's tone smoothed over a
+   fraction of the hatch spacing, so it doesn't pick up grain.
+6. Optionally fills the darkest tones solid, for a bolder graphic look.
+7. Removes specks: marks smaller than the speck size in both directions.
    Lines are long, so they stay.
-7. Smooths the edges, fills white gaps narrower than the minimum width
+8. Smooths the edges, fills white gaps narrower than the minimum width
    (too shallow to stay clean when etched) and removes lines narrower than
    it (they would be undercut and lost), so every line on the plate is at
    least that wide.
-8. Opens the result as a new black/white indexed image, ready to export as
+9. Opens the result as a new black/white indexed image, ready to export as
    a 1-bit TIFF.
 
 | Option | Default | Notes |
@@ -82,6 +88,9 @@ with no screen at all.
 | Line weight (pt) | 1.0 | Width of the line along a strong edge, in points (1 pt = 0.35 mm). Larger weights also leave out finer detail, since edges are found at a coarser scale. |
 | Detail | 60 | 0 to 100. Higher draws fainter edges (more lines, more texture); lower keeps only the strongest outlines. |
 | Simplify (pt) | 0.5 | Smooths away texture and noise smaller than this before looking for edges. Raise it for busy textures like foliage or fabric; 0 is off. |
+| Shading | Cross-hatching | None (outlines only), Hatching (one direction), or Cross-hatching (up to three directions). |
+| Shade from (% dark) | 45 | Tones darker than this get hatching; lighter tones stay white apart from outlines. |
+| Hatch spacing (pt) | 4 | Distance between hatch lines. 4 pt is 18 lines per inch. Hatch lines are never narrower than about 1.3 x the minimum line, and never closer than that, so they etch cleanly. |
 | Solid shadows (% dark) | 0 (off) | Fills tones at least this dark with solid black, as an illustrator would for deep shadows. 75 to 85 is a good start. |
 | Remove specks (pt) | 2.0 | Drops isolated marks smaller than this across. Raise it to clean up texture further; 0 keeps everything. |
 | Minimum line and gap (pt) | 0.5 | Lines narrower than this are removed and white gaps narrower than this are filled. 0.5 pt (0.18 mm) is safe for etched magnesium; photopolymer can go a little finer. |
@@ -92,7 +101,9 @@ with no screen at all.
 
 Tips: start from a photo with clear lighting and a plain background. If
 there are too many small lines, lower Detail or raise Simplify; if outlines
-are broken, raise Detail. A 4 x 6 inch plate at 1200 DPI takes 10 to 20
+are broken, raise Detail. If the shading is too heavy, raise Shade from or
+the hatch spacing, or switch to Hatching; for deep blacks, add Solid
+shadows at 85 to 90. A 4 x 6 inch plate at 1200 DPI takes 10 to 20
 seconds.
 
 ## Install (GIMP 3.0 or later)
@@ -130,7 +141,7 @@ code as the plug-in, so it needs Pillow and GEGL's Python bindings
 
 ```
 python3 tools/lineart_cli.py photo.jpg plate.tif --weight 1 --detail 60 \
-    --simplify 0.5 --shadows 80
+    --shading cross --shade-from 45 --hatch-spacing 4 --shadows 88
 ```
 
 ## Tests
@@ -142,6 +153,6 @@ python3 -m pytest tests
 
 `tests/test_gegl_screen.py` also checks the GEGL path against the numpy
 reference pixel for pixel, and `tests/test_gegl_lineart.py` checks the line
-art filter's line widths, speck removal and minimum line width; both are
+art filter's line widths, hatching, speck removal and minimum line width; both are
 skipped unless GEGL's Python bindings are installed (`gir1.2-gegl-0.4` and
 `python3-gi` on Debian/Ubuntu).
